@@ -45,5 +45,38 @@ export ENTE_DB_SSLMODE="${ENTE_DB_SSLMODE:-require}"
 export ENTE_S3_ARE_LOCAL_BUCKETS="${ENTE_S3_ARE_LOCAL_BUCKETS:-false}"
 export ENTE_S3_USE_PATH_STYLE_URLS="${ENTE_S3_USE_PATH_STYLE_URLS:-false}"
 
+# Browser uploads go straight from the Photos web app to the bucket through
+# presigned URLs, so the bucket needs a CORS rule or every web upload fails.
+# Railway Buckets start with none: set Ente's recommended rule on each start
+# (idempotent). Set ENTE_RAILWAY_BUCKET_CORS=false to manage CORS yourself.
+set_bucket_cors() {
+  ep="${ENTE_S3_B2_EU_CEN_ENDPOINT:-}"; [ -n "$ep" ] || return 1
+  case "$ep" in http://*|https://*) ;; *) ep="https://$ep";; esac
+  scheme="${ep%%://*}"; host="${ep#*://}"; host="${host%%/*}"
+  if [ "$ENTE_S3_USE_PATH_STYLE_URLS" = "true" ]; then
+    url="$scheme://$host/$ENTE_S3_B2_EU_CEN_BUCKET/?cors"
+  else
+    url="$scheme://$ENTE_S3_B2_EU_CEN_BUCKET.$host/?cors"
+  fi
+  xml='<CORSConfiguration><CORSRule><AllowedOrigin>*</AllowedOrigin><AllowedMethod>GET</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedMethod>PUT</AllowedMethod><AllowedMethod>POST</AllowedMethod><AllowedMethod>DELETE</AllowedMethod><AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><MaxAgeSeconds>3000</MaxAgeSeconds></CORSRule></CORSConfiguration>'
+  md5=$(printf '%s' "$xml" | md5sum | cut -d' ' -f1 | xxd -r -p | base64)
+  # credentials go through a curl config on stdin, not the process list
+  code=$(printf 'user = "%s:%s"\n' "${ENTE_S3_B2_EU_CEN_KEY:-}" "${ENTE_S3_B2_EU_CEN_SECRET:-}" |
+    curl -sS -o /tmp/cors.out -w '%{http_code}' -K - --max-time 20 \
+      --aws-sigv4 "aws:amz:${ENTE_S3_B2_EU_CEN_REGION:-auto}:s3" \
+      -X PUT -H "Content-MD5: $md5" -H 'Content-Type: application/xml' \
+      --data-binary "$xml" "$url") || code=000
+  [ "$code" = 200 ]
+}
+if [ "${ENTE_RAILWAY_BUCKET_CORS:-true}" != "false" ]; then
+  if set_bucket_cors; then
+    echo "ente-railway: bucket CORS rule set (browser uploads allowed)"
+  else
+    echo "ente-railway: WARNING: could not set the bucket CORS rule; web uploads will fail until it is set" >&2
+    head -c 300 /tmp/cors.out 2>/dev/null >&2 || true
+  fi
+  rm -f /tmp/cors.out
+fi
+
 cd /
 exec ./museum

@@ -21,6 +21,7 @@ Versions: server image commit `c2e571c5` (2026-11-15), web image commit `482ae68
 All variables are filled in for you; the template asks for nothing.
 
 - `Museum`: `MUSEUM_ENCRYPTION_KEY_HEX`, `MUSEUM_HASH_KEY_HEX`, `MUSEUM_JWT_SECRET_HEX` are generated per deployment (`${{secret(...)}}`). The start script turns them into the base64 keys museum needs, and museum refuses to start without them, so it never runs on the sample keys from upstream's `local.yaml`. **Keep them**: they encrypt stored email addresses and sign sessions. Database and bucket settings are references to `Postgres` and `Storage`.
+- `Museum` also sets a CORS rule on the bucket each time it starts, because the Photos web app uploads straight to the bucket and a new Railway Bucket allows no browser origins. Set `ENTE_RAILWAY_BUCKET_CORS=false` to manage CORS yourself.
 - `Photos`, `Albums`: `ENTE_APP` (which app to serve), `ENTE_API_ORIGIN` (the museum URL), `PORT`.
 
 Any other museum setting can be added as an `ENTE_…` variable: museum maps config keys to variables by upper-casing them and turning `.` and `-` into `_` (for example `internal.disable-registration` → `ENTE_INTERNAL_DISABLE_REGISTRATION=true`, SMTP via `ENTE_SMTP_HOST`, `ENTE_SMTP_PORT`, `ENTE_SMTP_USERNAME`, `ENTE_SMTP_PASSWORD`, `ENTE_SMTP_EMAIL`). See upstream's [configuration reference](https://ente.com/help/self-hosting/installation/config).
