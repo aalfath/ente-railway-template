@@ -1,0 +1,6 @@
+server {
+    listen ${PORT};
+    #listen [::]:${PORT};
+    root /out/${ENTE_APP};
+    location / { try_files $uri $uri.html /index.html; }
+}
